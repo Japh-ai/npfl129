@@ -11,13 +11,29 @@ parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
 parser.add_argument("--batch_size", default=10, type=int, help="Batch size")
 parser.add_argument("--data_size", default=100, type=int, help="Data size")
-parser.add_argument("--epochs", default=50, type=int, help="Number of SGD training epochs")
+parser.add_argument(
+    "--epochs", default=50, type=int, help="Number of SGD training epochs"
+)
 parser.add_argument("--l2", default=0.0, type=float, help="L2 regularization strength")
 parser.add_argument("--learning_rate", default=0.01, type=float, help="Learning rate")
-parser.add_argument("--plot", default=False, const=True, nargs="?", type=str, help="Plot the predictions")
-parser.add_argument("--recodex", default=False, action="store_true", help="Running in ReCodEx")
+parser.add_argument(
+    "--plot",
+    default=False,
+    const=True,
+    nargs="?",
+    type=str,
+    help="Plot the predictions",
+)
+parser.add_argument(
+    "--recodex", default=False, action="store_true", help="Running in ReCodEx"
+)
 parser.add_argument("--seed", default=92, type=int, help="Random seed")
-parser.add_argument("--test_size", default=0.5, type=lambda x: int(x) if x.isdigit() else float(x), help="Test size")
+parser.add_argument(
+    "--test_size",
+    default=0.5,
+    type=lambda x: int(x) if x.isdigit() else float(x),
+    help="Test size",
+)
 # If you add more arguments, ReCodEx will keep them with your default values.
 
 
@@ -26,50 +42,114 @@ def main(args: argparse.Namespace) -> tuple[list[float], float, float]:
     generator = np.random.RandomState(args.seed)
 
     # Generate an artificial regression dataset.
-    data, target = sklearn.datasets.make_regression(n_samples=args.data_size, random_state=args.seed)
+    data, target = sklearn.datasets.make_regression(
+        n_samples=args.data_size, random_state=args.seed
+    )
 
     # TODO: Append a constant feature with value 1 to the end of every input data.
     # Then we do not need to explicitly represent bias - it becomes the last weight.
+    data = np.column_stack([data, np.ones(data.shape[0])])
 
     # TODO: Split the dataset into a train set and a test set.
     # Use `sklearn.model_selection.train_test_split` method call, passing
     # arguments `test_size=args.test_size, random_state=args.seed`.
-    train_data, test_data, train_target, test_target = ...
+    train_data, test_data, train_target, test_target = (
+        sklearn.model_selection.train_test_split(
+            data, target, test_size=args.test_size, random_state=args.seed
+        )
+    )
 
     # Generate initial linear regression weights.
     weights = generator.uniform(size=train_data.shape[1], low=-0.1, high=0.1)
 
-    train_rmses, test_rmses = [], []
+    # TODO: Process the data in the order of `permutation`. For every
+    # `args.batch_size` of them, average their gradient, and update the weights.
+    # You can assume that `args.batch_size` exactly divides `len(train_data)`.
+    #
+    # The gradient for the input example $(x_i, t_i)$ is
+    # - $(x_i^T weights - t_i) x_i$ for the unregularized loss (1/2 MSE loss),
+    # - $args.l2 * weights_with_bias_set_to_zero$ for the L2 regularization loss,
+    #   where we set the bias to zero because the bias should not be regularized,
+    # and the SGD update is
+    #   weights = weights - args.learning_rate * gradient
+
+    train_rmses = []
+    test_rmses = []
+
+    # Iterate over each epoch
     for epoch in range(args.epochs):
+        # Shuffle the training data
         permutation = generator.permutation(train_data.shape[0])
+        shuffled_data = train_data[permutation]
+        shuffled_target = train_target[permutation]
 
-        # TODO: Process the data in the order of `permutation`. For every
-        # `args.batch_size` of them, average their gradient, and update the weights.
-        # You can assume that `args.batch_size` exactly divides `len(train_data)`.
-        #
-        # The gradient for the input example $(x_i, t_i)$ is
-        # - $(x_i^T weights - t_i) x_i$ for the unregularized loss (1/2 MSE loss),
-        # - $args.l2 * weights_with_bias_set_to_zero$ for the L2 regularization loss,
-        #   where we set the bias to zero because the bias should not be regularized,
-        # and the SGD update is
-        #   weights = weights - args.learning_rate * gradient
+        # Process data in batches
+        for i in range(0, len(shuffled_data), args.batch_size):
+            batch_data = shuffled_data[i : i + args.batch_size]
+            batch_target = shuffled_target[i : i + args.batch_size]
 
-        # TODO: Append current RMSE on train/test to `train_rmses`/`test_rmses`.
-        train_rmses.append(...)
-        test_rmses.append(...)
+            # Compute predictions for the batch
+            predictions = batch_data.dot(weights)
 
-    # TODO: Compute into `explicit_rmse` test data RMSE when fitting
-    # `sklearn.linear_model.LinearRegression` on `train_data` (ignoring `args.l2`).
-    explicit_rmse = ...
+            # Compute errors
+            errors = predictions - batch_target  # Shape: (batch_size,)
+
+            # Compute gradient for unregularized loss
+            gradient_unreg = (
+                batch_data.T.dot(errors)
+            ) / args.batch_size  # Shape: (num_features,)
+
+            # Compute gradient for L2 regularization
+            # Do not regularize the bias term (last weight)
+            weights_reg = np.copy(weights)
+            weights_reg[-1] = 0  # Set bias weight to zero
+            gradient_reg = args.l2 * weights_reg
+
+            # Total gradient
+            gradient = gradient_unreg + gradient_reg
+
+            # Update weights
+            weights -= args.learning_rate * gradient
+
+            # TODO: Append current RMSE on train/test to `train_rmses`/`test_rmses`.
+            # Compute predictions on the entire train and test sets
+            train_predictions = train_data.dot(weights)
+            test_predictions = test_data.dot(weights)
+
+            # Compute RMSE for train and test
+            train_rmse = sklearn.metrics.root_mean_squared_error(
+                train_target, train_predictions
+            )
+            test_rmse = sklearn.metrics.root_mean_squared_error(
+                test_target, test_predictions
+            )
+
+            # Append RMSEs to the respective lists
+            train_rmses.append(train_rmse)
+            test_rmses.append(test_rmse)
+
+        # TODO: Compute into `explicit_rmse` test data RMSE when fitting
+        # `sklearn.linear_model.LinearRegression` on `train_data` (ignoring `args.l2`).
+        linear_model = sklearn.linear_model.LinearRegression()
+        linear_model.fit(train_data, train_target)
+        explicit_predictions = linear_model.predict(test_data)
+        explicit_rmse = sklearn.metrics.root_mean_squared_error(
+            test_target, explicit_predictions
+        )
 
     if args.plot:
         import matplotlib.pyplot as plt
+
         plt.plot(train_rmses, label="Train")
         plt.plot(test_rmses, label="Test")
         plt.xlabel("Epochs")
         plt.ylabel("RMSE")
         plt.legend()
-        plt.show() if args.plot is True else plt.savefig(args.plot, transparent=True, bbox_inches="tight")
+        (
+            plt.show()
+            if args.plot is True
+            else plt.savefig(args.plot, transparent=True, bbox_inches="tight")
+        )
 
     return weights, test_rmses[-1], explicit_rmse
 
@@ -78,4 +158,6 @@ if __name__ == "__main__":
     main_args = parser.parse_args([] if "__file__" not in globals() else None)
     weights, sgd_rmse, explicit_rmse = main(main_args)
     print("Test RMSE: SGD {:.3f}, explicit {:.1f}".format(sgd_rmse, explicit_rmse))
-    print("Learned weights:", *("{:.3f}".format(weight) for weight in weights[:12]), "...")
+    print(
+        "Learned weights:", *("{:.3f}".format(weight) for weight in weights[:12]), "..."
+    )

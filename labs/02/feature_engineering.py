@@ -1,19 +1,33 @@
 #!/usr/bin/env python3
-import argparse
 
+# Jorge Antonio Puente Huerta
+
+import argparse
 import numpy as np
 import sklearn.compose
 import sklearn.datasets
 import sklearn.model_selection
-import sklearn.pipeline
+from sklearn.pipeline import Pipeline
 import sklearn.preprocessing
+import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, PolynomialFeatures
 
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
-parser.add_argument("--dataset", default="diabetes", type=str, help="Standard sklearn dataset to load")
-parser.add_argument("--recodex", default=False, action="store_true", help="Running in ReCodEx")
+parser.add_argument(
+    "--dataset", default="diabetes", type=str, help="Standard sklearn dataset to load"
+)
+parser.add_argument(
+    "--recodex", default=False, action="store_true", help="Running in ReCodEx"
+)
 parser.add_argument("--seed", default=42, type=int, help="Random seed")
-parser.add_argument("--test_size", default=0.5, type=lambda x: int(x) if x.isdigit() else float(x), help="Test size")
+parser.add_argument(
+    "--test_size",
+    default=0.5,
+    type=lambda x: int(x) if x.isdigit() else float(x),
+    help="Test size",
+)
 # If you add more arguments, ReCodEx will keep them with your default values.
 
 
@@ -26,6 +40,67 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
 
     # TODO: Process the input columns in the following way:
     #
+    # Split the dataset into a train set and a test set.
+    train_data, test_data, train_target, test_target = (
+        sklearn.model_selection.train_test_split(
+            dataset.data,
+            dataset.target,
+            test_size=args.test_size,
+            random_state=args.seed,
+        )
+    )
+    # Convert to DataFrame for easier column manipulation
+    df_train = pd.DataFrame(train_data, columns=dataset.feature_names)
+    df_test = pd.DataFrame(test_data, columns=dataset.feature_names)
+
+    def split_categorical_numerical(df, tol=1e-8):
+        categorical_columns = []
+        numerical_columns = []
+
+        for col in df.columns:
+            if pd.api.types.is_integer_dtype(df[col]):
+                categorical_columns.append(col)
+            elif pd.api.types.is_float_dtype(df[col]):
+                # Check if all non-NaN values are close to integers within the tolerance
+                is_integer_like = np.all(np.isclose(df[col].dropna() % 1, 0, atol=tol))
+                if is_integer_like:
+                    categorical_columns.append(col)
+                else:
+                    numerical_columns.append(col)
+            else:
+                # For other dtypes, default to numerical
+                numerical_columns.append(col)
+
+        return categorical_columns, numerical_columns
+
+    categorical_columns, numerical_columns = split_categorical_numerical(df_train)
+
+    # Define the ColumnTransformer to handle both categorical and numerical columns
+    preprocessor = ColumnTransformer(
+        transformers=[
+            (
+                "cat",
+                OneHotEncoder(sparse_output=False, handle_unknown="ignore"),
+                categorical_columns,
+            ),
+            (
+                "num",
+                StandardScaler(),
+                numerical_columns,
+            ),
+        ]
+    )
+
+    # Create the final pipeline that applies PolynomialFeatures after preprocessing
+    pipeline = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            ("poly", PolynomialFeatures(degree=2, include_bias=False)),
+        ]
+    )
+
+    # Fit the pipeline on the training data and transform both train and test data
+
     # - if a column has only integer values, consider it a categorical column
     #   (days in a week, dog breed, ...; in general, integer values can also
     #   represent numerical non-categorical values, but we use this assumption
@@ -57,9 +132,8 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, np.ndarray]:
     # Then transform the training data into `train_data` (with a `transform` call;
     # however, you can combine the two methods into a single `fit_transform` call).
     # Finally, transform testing data to `test_data`.
-    train_data = ...
-    test_data = ...
-
+    train_data = pipeline.fit_transform(df_train)
+    test_data = pipeline.transform(df_test)
     return train_data[:5], test_data[:5]
 
 
@@ -68,5 +142,10 @@ if __name__ == "__main__":
     train_data, test_data = main(main_args)
     for dataset in [train_data, test_data]:
         for line in range(min(dataset.shape[0], 5)):
-            print(" ".join("{:.4g}".format(dataset[line, column]) for column in range(min(dataset.shape[1], 140))),
-                  *["..."] if dataset.shape[1] > 140 else [])
+            print(
+                " ".join(
+                    "{:.4g}".format(dataset[line, column])
+                    for column in range(min(dataset.shape[1], 140))
+                ),
+                *["..."] if dataset.shape[1] > 140 else []
+            )
