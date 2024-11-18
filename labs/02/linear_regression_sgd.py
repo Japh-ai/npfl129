@@ -46,7 +46,7 @@ def main(args: argparse.Namespace) -> tuple[list[float], float, float]:
         n_samples=args.data_size, random_state=args.seed
     )
 
-    # TODO: Append a constant feature with value 1 to the end of every input data.
+    # TODO: Append a constant feature with value 1 to the end of all input data.
     # Then we do not need to explicitly represent bias - it becomes the last weight.
     data = np.column_stack([data, np.ones(data.shape[0])])
 

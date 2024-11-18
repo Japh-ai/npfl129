@@ -100,7 +100,7 @@ def main(args: argparse.Namespace) -> np.ndarray:
     )
     target = 2 * target - 1
 
-    # TODO: Append a constant feature with value 1 to the end of every input data.
+    # TODO: Append a constant feature with value 1 to the end of all input data.
     # Then we do not need to explicitly represent bias - it becomes the last weight.
     data = np.hstack([data, np.ones((data.shape[0], 1))])
     # Generate initial perceptron weights.

@@ -87,7 +87,7 @@ def main(args: argparse.Namespace) -> tuple[np.ndarray, list[tuple[float, float]
         random_state=args.seed,
     )
 
-    # TODO: Append a constant feature with value 1 to the end of every input data.
+    # TODO: Append a constant feature with value 1 to the end of all input data.
     # Then we do not need to explicitly represent bias - it becomes the last weight.
     data = np.hstack([data, np.ones([data.shape[0], 1])])
     # TODO: Split the dataset into a train set and a test set.
