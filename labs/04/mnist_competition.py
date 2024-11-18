@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Jorge Antonio Puente Huerta
+
 import argparse
 import lzma
 import os
@@ -10,13 +12,22 @@ import urllib.request
 import numpy as np
 import numpy.typing as npt
 
+from sklearn.neural_network import MLPClassifier
+
+
 parser = argparse.ArgumentParser()
 # These arguments will be set appropriately by ReCodEx, even if you change them.
-parser.add_argument("--predict", default=None, type=str, help="Path to the dataset to predict")
-parser.add_argument("--recodex", default=False, action="store_true", help="Running in ReCodEx")
+parser.add_argument(
+    "--predict", default=None, type=str, help="Path to the dataset to predict"
+)
+parser.add_argument(
+    "--recodex", default=False, action="store_true", help="Running in ReCodEx"
+)
 parser.add_argument("--seed", default=42, type=int, help="Random seed")
 # For these and any other arguments you add, ReCodEx will keep your default value.
-parser.add_argument("--model_path", default="mnist_competition.model", type=str, help="Model path")
+parser.add_argument(
+    "--model_path", default="mnist_competition.model", type=str, help="Model path"
+)
 
 
 class Dataset:
@@ -25,10 +36,13 @@ class Dataset:
     The train set contains 60000 images of handwritten digits. The data
     contain 28*28=784 values in the range 0-255, the targets are numbers 0-9.
     """
-    def __init__(self,
-                 name="mnist.train.npz",
-                 data_size=None,
-                 url="https://ufal.mff.cuni.cz/~courses/npfl129/2425/datasets/"):
+
+    def __init__(
+        self,
+        name="mnist.train.npz",
+        data_size=None,
+        url="https://ufal.mff.cuni.cz/~courses/npfl129/2425/datasets/",
+    ):
         if not os.path.exists(name):
             print("Downloading dataset {}...".format(name), file=sys.stderr)
             urllib.request.urlretrieve(url + name, filename="{}.tmp".format(name))
@@ -38,7 +52,7 @@ class Dataset:
         dataset = np.load(name)
         for key, value in dataset.items():
             setattr(self, key, value[:data_size])
-        self.data = self.data.reshape([-1, 28*28]).astype(float)
+        self.data = self.data.reshape([-1, 28 * 28]).astype(float)
 
 
 def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
@@ -46,9 +60,21 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
         # We are training a model.
         np.random.seed(args.seed)
         train = Dataset()
-
         # TODO: Train a model on the given dataset and store it in `model`.
-        model = ...
+        model = MLPClassifier(
+            hidden_layer_sizes=(512, 256, 128, 64, 32, 16),
+            # batch_size=2048,
+            max_iter=300,
+            learning_rate_init=0.001,
+            early_stopping=True,
+            random_state=args.seed,
+            learning_rate="adaptive",  # this works only with solver="sgd"
+            solver="adam",
+            alpha=0.01,
+            momentum=0.9,
+            verbose=True,
+        )
+        model.fit(train.data, train.target)
 
         # If you trained one or more MLPs, you can use the following code
         # to compress it significantly (approximately 12 times). The snippet
@@ -69,7 +95,7 @@ def main(args: argparse.Namespace) -> Optional[npt.ArrayLike]:
             model = pickle.load(model_file)
 
         # TODO: Generate `predictions` with the test set predictions.
-        predictions = ...
+        predictions = model.predict(test.data)
 
         return predictions
 
